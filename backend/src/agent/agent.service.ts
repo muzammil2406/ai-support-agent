@@ -49,6 +49,23 @@ function truncateOutput(content: unknown): string {
   return text.length > 600 ? `${text.slice(0, 600)}…` : text;
 }
 
+/** Gemini/LangChain may yield `content` as a plain string OR an array of content blocks. */
+function extractText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === 'string') return block;
+        if (block && typeof block === 'object' && 'text' in block) {
+          return String((block as { text: unknown }).text);
+        }
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
+
 /**
  * Stateless LangGraph agent (ReAct via createReactAgent). No checkpointer is
  * used: conversation context is rebuilt from the Mongo transcript each turn,
@@ -72,7 +89,7 @@ export class AgentService {
     if (provider === 'google') {
       return new ChatGoogleGenerativeAI({
         apiKey: this.config.get('GOOGLE_API_KEY'),
-        model: this.config.get<string>('LLM_MODEL', 'gemini-2.0-flash'),
+        model: this.config.get<string>('LLM_MODEL', 'gemini-3.5-flash'),
         temperature: 0.2,
         maxOutputTokens: 1024,
       });
@@ -93,7 +110,7 @@ export class AgentService {
     return createReactAgent({
       llm: this.buildLlm(),
       tools,
-      messagesModifier: SYSTEM_PROMPT,
+      messageModifier: SYSTEM_PROMPT,
     });
   }
 
@@ -126,24 +143,25 @@ export class AgentService {
       { streamMode: ['messages', 'updates'], recursionLimit: 25 },
     );
 
-    for await (const item of stream as AsyncIterable<Record<string, unknown>>) {
-      // streamMode "messages" → tokens (yielded as [AIMessageChunk, metadata])
-      if (Array.isArray(item.messages)) {
-        const first = item.messages[0];
-        const chunk = Array.isArray(first) ? first[0] : first;
-        const text = (chunk as { content?: unknown })?.content;
-        if (typeof text === 'string' && text) {
-          reply += text;
-          await handlers?.onToken?.(text);
+    for await (const item of stream as AsyncIterable<[string, unknown]>) {
+      const [mode, value] = item;
+      // mode "messages" → array of AIMessageChunk — token text. Chunks may be
+      // live instances (`content`) or serialized (`kwargs.content`).
+      if (mode === 'messages' && Array.isArray(value)) {
+        for (const chunk of value as Array<{ content?: unknown; kwargs?: { content?: unknown } }>) {
+          const text = extractText(chunk?.content ?? chunk?.kwargs?.content);
+          if (text) {
+            reply += text;
+            await handlers?.onToken?.(text);
+          }
         }
       }
 
-      // streamMode "updates" → { tools: { messages: [ToolMessage] } }
-      if (item.updates && typeof item.updates === 'object') {
-        for (const nodeName of Object.keys(item.updates as Record<string, unknown>)) {
-          const update = (item.updates as Record<string, unknown>)[nodeName] as {
-            messages?: Array<{ _getType?: () => string; name?: string; content?: unknown }>;
-          };
+      // mode "updates" → { nodeName: { messages: [ToolMessage, ...] } }.
+      if (mode === 'updates' && value && typeof value === 'object') {
+        const updates = value as Record<string, { messages?: Array<{ _getType?: () => string; name?: string; content?: unknown }> }>;
+        for (const nodeName of Object.keys(updates)) {
+          const update = updates[nodeName];
           if (!update?.messages) continue;
           for (const msg of update.messages) {
             if (msg._getType?.() === 'tool') {

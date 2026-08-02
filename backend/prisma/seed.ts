@@ -7,6 +7,10 @@
  *    time — never batched, keeping memory flat).
  * 4. Ensures the pgvector extension + ivfflat index exist.
  *
+ * Embeddings use gemini-embedding-001 trimmed to 768 dims (outputDimensionality)
+ * to match the pgvector column. text-embedding-004 is no longer available on
+ * new Google AI keys.
+ *
  * Env required: DATABASE_URL, GOOGLE_API_KEY (loaded from backend/.env by the
  * Prisma CLI; `import 'dotenv/config'` covers direct `npm run seed`).
  */
@@ -14,16 +18,24 @@
 import 'dotenv/config';
 import * as bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const prisma = new PrismaClient();
 
-const EMBEDDINGS = new GoogleGenerativeAIEmbeddings({
-  apiKey: process.env.GOOGLE_API_KEY,
-  model: process.env.EMBEDDINGS_MODEL ?? 'text-embedding-004',
-  maxConcurrency: 1,
-});
-EMBEDDINGS.maxBatchSize = 1;
+const EMBEDDING_DIMENSIONS = 768;
+
+async function embedQuery(text: string): Promise<number[]> {
+  const client = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+  const model = client.getGenerativeModel({
+    model: process.env.EMBEDDINGS_MODEL ?? 'gemini-embedding-001',
+  });
+  const result = await model.embedContent({
+    content: { role: 'user', parts: [{ text }] },
+    taskType: 'RETRIEVAL_DOCUMENT',
+    outputDimensionality: EMBEDDING_DIMENSIONS,
+  } as unknown as Parameters<typeof model.embedContent>[0]);
+  return result.embedding.values;
+}
 
 // ── Demo users ──────────────────────────────────────────────────────────────
 const DEMO_PASSWORD = 'password123';
@@ -240,10 +252,10 @@ async function seedFaq(): Promise<void> {
       },
     });
 
-    // Embed one entry at a time (maxBatchSize: 1) — memory stays flat.
-    const [vector] = await EMBEDDINGS.embedDocuments([
+    // Embed one entry at a time — memory stays flat.
+    const vector = await embedQuery(
       `${entry.category}\nQ: ${entry.question}\nA: ${entry.answer}`,
-    ]);
+    );
     const vectorLiteral = `[${vector.join(',')}]`;
 
     await prisma.$executeRawUnsafe(

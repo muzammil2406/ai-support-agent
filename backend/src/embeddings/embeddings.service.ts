@@ -1,43 +1,55 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const EMBEDDING_DIMENSIONS = 768;
 
 /**
- * Embedding provider (Gemini text-embedding-004 → 768 dims, matching the
- * pgvector column). The client is created lazily so the app can boot without
- * the API key present.
+ * Embedding provider (gemini-embedding-001, trimmed to 768 dims via
+ * `outputDimensionality` — matching the pgvector column). Uses the raw
+ * `@google/generative-ai` SDK because LangChain's embeddings wrapper does not
+ * expose `outputDimensionality`, and `text-embedding-004` is no longer
+ * available on new Google AI keys.
  *
- * Memory note: `maxBatchSize: 1` keeps embeddings to a single text at a time —
- * we never hold the FAQ embedding set in memory. Every lookup queries pgvector
+ * Memory note: we always embed a single text at a time (never batch), so the
+ * FAQ embedding set is never held in memory — every lookup queries pgvector
  * directly.
  */
 @Injectable()
 export class EmbeddingsService {
-  private _embeddings?: GoogleGenerativeAIEmbeddings;
+  private _client?: GoogleGenerativeAI;
 
   constructor(private readonly config: ConfigService) {}
 
-  private get embeddings(): GoogleGenerativeAIEmbeddings {
-    if (!this._embeddings) {
-      this._embeddings = new GoogleGenerativeAIEmbeddings({
-        apiKey: this.config.getOrThrow<string>('GOOGLE_API_KEY'),
-        model: this.config.get<string>('EMBEDDINGS_MODEL', 'text-embedding-004'),
-        maxConcurrency: 1,
-      });
-      // One embedding per request — never batch, keep memory flat.
-      this._embeddings.maxBatchSize = 1;
+  private get client(): GoogleGenerativeAI {
+    if (!this._client) {
+      this._client = new GoogleGenerativeAI(
+        this.config.getOrThrow<string>('GOOGLE_API_KEY'),
+      );
     }
-    return this._embeddings;
+    return this._client;
   }
 
   /** Embed a single user query (dimension 768). */
   async embedQuery(text: string): Promise<number[]> {
-    return this.embeddings.embedQuery(text);
+    const model = this.client.getGenerativeModel({
+      model: this.config.get<string>('EMBEDDINGS_MODEL', 'gemini-embedding-001'),
+    });
+    const result = await model.embedContent({
+      content: { role: 'user', parts: [{ text }] },
+      taskType: 'RETRIEVAL_QUERY',
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    } as unknown as Parameters<typeof model.embedContent>[0]);
+    return result.embedding.values;
   }
 
-  /** Embed a single document (used by the FAQ seeder, one at a time). */
+  /** Embed documents one at a time (used by the FAQ seeder — memory stays flat). */
   async embedTexts(texts: string[]): Promise<number[][]> {
-    return this.embeddings.embedDocuments(texts);
+    const out: number[][] = [];
+    for (const text of texts) {
+      out.push(await this.embedQuery(text));
+    }
+    return out;
   }
 
   /** Format a numeric vector as a Postgres vector literal, e.g. `[0.1,0.2,...]`. */
