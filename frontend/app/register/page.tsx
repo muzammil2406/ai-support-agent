@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { register, setAuth } from '@/lib/api';
+import NovaMark from '@/components/brand/NovaMark';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,8 +33,8 @@ export default function RegisterPage() {
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">Create your account</h1>
+          <NovaMark className="mx-auto h-12 w-12 rounded-2xl shadow-lg shadow-indigo-500/30" />
+          <h1 className="mt-3 text-2xl font-bold text-slate-900">Create your account</h1>
           <p className="mt-1 text-sm text-slate-500">Join Stellar Goods support</p>
         </div>
 
