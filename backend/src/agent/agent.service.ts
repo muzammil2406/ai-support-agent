@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  BaseMessage,
+  HumanMessage,
+  isAIMessage,
+} from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatGroq } from '@langchain/groq';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
@@ -43,7 +49,7 @@ HOW TO RESPOND
 - Use short paragraphs. Use a bullet list only when there are 3 or more distinct points.
 
 TOOLS
-- get_order_status: ALWAYS call this before answering anything about an order. If the customer did not give an order number, ask for it.
+- get_order_status: ALWAYS call this before answering anything about an order. Call it WITHOUT an order number first — it knows the customer's orders automatically. If it returns multiple orders, ask the customer which one they mean before giving any status details. If it returns "multiple": true, do NOT guess — list the orders briefly and ask. Only call it again with an orderNumber once the customer picks one.
 - faq_lookup: call this for policy and how-to questions (returns, shipping, refunds, warranties, accounts...). Base your answer only on the retrieved entries. If nothing relevant is found, say you're not sure and offer to escalate.
 - escalate_to_human: call when the customer asks for a human, is frustrated, or needs human approval (refunds, exceptions, repeated failures).
   - If it returns "escalated": true, confirm warmly that a human agent has been notified.
@@ -76,6 +82,76 @@ function extractText(content: unknown): string {
   return '';
 }
 
+interface ToolCallLike {
+  name?: string;
+  args?: unknown;
+  id?: string;
+  type?: string;
+}
+
+/**
+ * Some models (e.g. llama via Groq) emit a tool call with `arguments: "null"`
+ * when the schema has no required fields. LangChain then marks it an
+ * `invalid_tool_call`, the agent's `tool_calls` stays empty, and the graph
+ * routes to END without ever running the tool. Recover such calls as valid
+ * no-argument tool calls so the tool actually executes.
+ */
+function normalizeToolCalls(message: BaseMessage): BaseMessage {
+  if (!isAIMessage(message)) return message;
+
+  const valid = (message.tool_calls as ToolCallLike[] | undefined)?.filter(
+    (tc) => tc?.name,
+  ) ?? [];
+  const invalid = (message.invalid_tool_calls as ToolCallLike[] | undefined) ?? [];
+
+  const recoverable = invalid
+    .filter((tc) => {
+      if (!tc?.name) return false;
+      const args = tc.args;
+      if (args == null) return true;
+      if (typeof args === 'string') {
+        const trimmed = args.trim();
+        return trimmed === '' || trimmed === 'null';
+      }
+      return false;
+    })
+    .map((tc) => ({
+      name: tc.name as string,
+      args: {},
+      id: tc.id,
+      type: 'tool_call',
+    }));
+
+  if (!recoverable.length) return message;
+
+  return new AIMessage({
+    content: message.content,
+    additional_kwargs: message.additional_kwargs,
+    tool_calls: [...valid, ...recoverable],
+    invalid_tool_calls: [],
+    id: message.id,
+  });
+}
+
+/** ChatGroq wrapper that normalizes recovered tool calls before the graph routes. */
+class NormalizingChatGroq extends ChatGroq {
+  override async invoke(input: unknown, config?: unknown): Promise<BaseMessage> {
+    const result = (await super.invoke(input as never, config as never)) as BaseMessage;
+    return normalizeToolCalls(result);
+  }
+}
+
+/** ChatGoogleGenerativeAI wrapper that normalizes recovered tool calls. */
+class NormalizingChatGoogleGenerativeAI extends ChatGoogleGenerativeAI {
+  override async invoke(input: unknown, config?: unknown): Promise<BaseMessage> {
+    const result = (await super.invoke(
+      input as never,
+      config as never,
+    )) as BaseMessage;
+    return normalizeToolCalls(result);
+  }
+}
+
 /**
  * Stateless LangGraph agent (ReAct via createReactAgent). No checkpointer is
  * used: conversation context is rebuilt from the Mongo transcript each turn,
@@ -97,14 +173,14 @@ export class AgentService {
   private buildLlm(): BaseChatModel {
     const provider = this.config.get<string>('LLM_PROVIDER', 'groq');
     if (provider === 'google') {
-      return new ChatGoogleGenerativeAI({
+      return new NormalizingChatGoogleGenerativeAI({
         apiKey: this.config.get('GOOGLE_API_KEY'),
         model: this.config.get<string>('LLM_MODEL', 'gemini-3.5-flash'),
         temperature: 0.2,
         maxOutputTokens: 1024,
       });
     }
-    return new ChatGroq({
+    return new NormalizingChatGroq({
       apiKey: this.config.get('GROQ_API_KEY'),
       model: this.config.get<string>('LLM_MODEL', 'llama-3.3-70b-versatile'),
       temperature: 0.2,
@@ -185,6 +261,9 @@ export class AgentService {
               name?: string;
               content?: unknown;
               tool_calls?: Array<{ name?: string; args?: Record<string, unknown> }>;
+              additional_kwargs?: {
+                tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
+              };
             }>;
           }
         >;
@@ -194,10 +273,23 @@ export class AgentService {
           for (const msg of update.messages) {
             const type = msg._getType?.();
             // An AIMessage carrying tool_calls arrives BEFORE the tool runs —
-            // surface it so the UI can show a live "working" indicator.
-            if (type === 'ai' && Array.isArray(msg.tool_calls)) {
-              for (const tc of msg.tool_calls) {
+            // surface it so the UI can show a live "working" indicator. Tool
+            // calls may also arrive via additional_kwargs (some providers only
+            // fill that slot) — surface those too.
+            if (type === 'ai') {
+              const calls = msg.tool_calls ?? [];
+              const raw =
+                (msg.additional_kwargs?.tool_calls as
+                  | Array<{ function?: { name?: string; arguments?: string } }>
+                  | undefined) ?? [];
+              for (const tc of calls) {
                 if (tc?.name) await handlers?.onToolStart?.(tc.name, tc.args);
+              }
+              for (const rc of raw) {
+                const name = rc.function?.name;
+                if (name && !calls.some((tc) => tc.name === name)) {
+                  await handlers?.onToolStart?.(name, undefined);
+                }
               }
             }
             if (type === 'tool') {

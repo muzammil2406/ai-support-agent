@@ -48,6 +48,8 @@ interface SeedUser {
 
 const USERS: SeedUser[] = [
   { email: 'demo@stellar.dev', name: 'Demo Customer', role: 'customer' },
+  { email: 'one@stellar.dev', name: 'One Order Customer', role: 'customer' },
+  { email: 'none@stellar.dev', name: 'No Orders Customer', role: 'customer' },
   { email: 'support@stellar.dev', name: 'Support Agent', role: 'support_agent' },
   { email: 'admin@stellar.dev', name: 'Admin', role: 'admin' },
 ];
@@ -58,21 +60,32 @@ interface SeedOrder {
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
   total: number;
   itemCount: number;
+  itemName: string;
   createdAt: Date;
 }
 
 const ORDERS: SeedOrder[] = [
-  { orderNumber: 'ORD-1001', status: 'delivered', total: 89.99, itemCount: 2, createdAt: new Date('2026-05-12T10:24:00Z') },
-  { orderNumber: 'ORD-1002', status: 'shipped', total: 149.5, itemCount: 3, createdAt: new Date('2026-06-03T14:02:00Z') },
-  { orderNumber: 'ORD-1003', status: 'processing', total: 42.0, itemCount: 1, createdAt: new Date('2026-06-21T09:47:00Z') },
-  { orderNumber: 'ORD-1004', status: 'delivered', total: 214.75, itemCount: 4, createdAt: new Date('2026-04-02T18:30:00Z') },
-  { orderNumber: 'ORD-1005', status: 'cancelled', total: 63.2, itemCount: 2, createdAt: new Date('2026-05-28T11:15:00Z') },
-  { orderNumber: 'ORD-1006', status: 'shipped', total: 35.99, itemCount: 1, createdAt: new Date('2026-06-27T16:40:00Z') },
-  { orderNumber: 'ORD-1007', status: 'refunded', total: 118.4, itemCount: 2, createdAt: new Date('2026-04-19T08:05:00Z') },
-  { orderNumber: 'ORD-1008', status: 'processing', total: 76.8, itemCount: 3, createdAt: new Date('2026-07-01T12:33:00Z') },
-  { orderNumber: 'ORD-1009', status: 'delivered', total: 302.0, itemCount: 5, createdAt: new Date('2026-03-15T19:12:00Z') },
-  { orderNumber: 'ORD-1010', status: 'pending', total: 27.49, itemCount: 1, createdAt: new Date('2026-07-05T07:58:00Z') },
+  { orderNumber: 'ORD-1001', status: 'delivered', total: 89.99, itemCount: 2, itemName: 'Stainless Steel Water Bottle', createdAt: new Date('2026-05-12T10:24:00Z') },
+  { orderNumber: 'ORD-1002', status: 'shipped', total: 149.5, itemCount: 3, itemName: 'Ceramic Pour-Over Coffee Set', createdAt: new Date('2026-06-03T14:02:00Z') },
+  { orderNumber: 'ORD-1003', status: 'processing', total: 42.0, itemCount: 1, itemName: 'Silk Sleep Mask', createdAt: new Date('2026-06-21T09:47:00Z') },
+  { orderNumber: 'ORD-1004', status: 'delivered', total: 214.75, itemCount: 4, itemName: 'Cast Iron Skillet', createdAt: new Date('2026-04-02T18:30:00Z') },
+  { orderNumber: 'ORD-1005', status: 'cancelled', total: 63.2, itemCount: 2, itemName: 'Bamboo Cutting Board', createdAt: new Date('2026-05-28T11:15:00Z') },
+  { orderNumber: 'ORD-1006', status: 'shipped', total: 35.99, itemCount: 1, itemName: 'French Press', createdAt: new Date('2026-06-27T16:40:00Z') },
+  { orderNumber: 'ORD-1007', status: 'refunded', total: 118.4, itemCount: 2, itemName: 'Leather Weekender Bag', createdAt: new Date('2026-04-19T08:05:00Z') },
+  { orderNumber: 'ORD-1008', status: 'processing', total: 76.8, itemCount: 3, itemName: 'Aromatherapy Diffuser', createdAt: new Date('2026-07-01T12:33:00Z') },
+  { orderNumber: 'ORD-1009', status: 'delivered', total: 302.0, itemCount: 5, itemName: 'Espresso Machine', createdAt: new Date('2026-03-15T19:12:00Z') },
+  { orderNumber: 'ORD-1010', status: 'pending', total: 27.49, itemCount: 1, itemName: 'Himalayan Salt Lamp', createdAt: new Date('2026-07-05T07:58:00Z') },
 ];
+
+// Single order for the "one order" customer.
+const ONE_ORDER: SeedOrder = {
+  orderNumber: 'ORD-2001',
+  status: 'delivered',
+  total: 79.99,
+  itemCount: 1,
+  itemName: 'Wireless Earbuds',
+  createdAt: new Date('2026-06-10T15:20:00Z'),
+};
 
 // ── FAQ knowledge base (~18 entries, matches the pgvector 768-dim column) ───
 interface FaqSeed {
@@ -213,30 +226,51 @@ async function ensurePgVector(): Promise<void> {
   `);
 }
 
-async function seedUsers(): Promise<{ demoCustomerId: string }> {
+async function seedUsers(): Promise<{
+  demoCustomerId: string;
+  oneOrderCustomerId: string;
+  noneOrderCustomerId: string;
+}> {
   const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
-  let demoCustomerId = '';
+  const ids = {
+    demoCustomerId: '',
+    oneOrderCustomerId: '',
+    noneOrderCustomerId: '',
+  };
   for (const u of USERS) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
       update: { name: u.name, role: u.role },
       create: { email: u.email, name: u.name, password: hash, role: u.role },
     });
-    if (u.role === 'customer') demoCustomerId = user.id;
+    if (u.email === 'demo@stellar.dev') ids.demoCustomerId = user.id;
+    if (u.email === 'one@stellar.dev') ids.oneOrderCustomerId = user.id;
+    if (u.email === 'none@stellar.dev') ids.noneOrderCustomerId = user.id;
     console.log(`✔ user ${u.email} (${u.role}) — password "${DEMO_PASSWORD}"`);
   }
-  return { demoCustomerId };
+  return ids;
 }
 
-async function seedOrders(demoCustomerId: string): Promise<void> {
+async function seedOrders(ids: {
+  demoCustomerId: string;
+  oneOrderCustomerId: string;
+}): Promise<void> {
   await prisma.order.deleteMany({});
   await prisma.order.createMany({
     data: ORDERS.map((o) => ({
       ...o,
-      userId: demoCustomerId,
+      userId: ids.demoCustomerId,
     })),
   });
-  console.log(`✔ seeded ${ORDERS.length} orders`);
+  await prisma.order.create({
+    data: {
+      ...ONE_ORDER,
+      userId: ids.oneOrderCustomerId,
+    },
+  });
+  console.log(
+    `✔ seeded ${ORDERS.length} orders (demo customer) + 1 order (one-order customer)`,
+  );
 }
 
 async function seedFaq(): Promise<void> {
@@ -275,8 +309,8 @@ async function main(): Promise<void> {
     throw new Error('GOOGLE_API_KEY is required to generate FAQ embeddings.');
   }
 
-  const { demoCustomerId } = await seedUsers();
-  await seedOrders(demoCustomerId);
+  const ids = await seedUsers();
+  await seedOrders(ids);
   await ensurePgVector();
   await seedFaq();
 

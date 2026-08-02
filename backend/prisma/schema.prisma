@@ -45,6 +45,7 @@ model Order {
   status      OrderStatus
   total       Decimal  @db.Decimal(10, 2)
   itemCount   Int      @default(1)
+  itemName    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

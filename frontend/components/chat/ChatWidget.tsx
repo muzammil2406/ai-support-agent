@@ -395,7 +395,9 @@ export default function ChatWidget() {
                     className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm"
                   >
                     <LoaderIcon className="h-3.5 w-3.5 animate-spin text-indigo-500" />
-                    {TOOL_LABELS[t.name] ?? t.name}
+                    {t.name === 'get_order_status' && !t.args?.orderNumber
+                      ? 'Looking up your orders'
+                      : (TOOL_LABELS[t.name] ?? t.name)}
                     {t.name === 'get_order_status' &&
                       typeof t.args?.orderNumber === 'string' && (
                         <span className="font-mono text-indigo-400">
