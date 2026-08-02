@@ -5,6 +5,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { login, setAuth } from '@/lib/api';
+import NovaMark from '@/components/brand/NovaMark';
 
 export default function LoginPage() {
   return (
@@ -48,13 +49,9 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-100 via-slate-50 to-violet-100 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 shadow-lg shadow-indigo-500/30">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 text-white">
-              <path d="M12 2l1.9 5.7a2 2 0 001.3 1.3L21 11l-5.8 2a2 2 0 00-1.3 1.3L12 20l-1.9-5.7a2 2 0 00-1.3-1.3L3 11l5.8-2a2 2 0 001.3-1.3L12 2z" />
-            </svg>
-          </span>
+          <NovaMark className="mx-auto h-12 w-12 rounded-2xl shadow-lg shadow-indigo-500/30" />
           <h1 className="mt-3 text-2xl font-bold text-slate-900">Welcome back</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to Aurora support</p>
+          <p className="mt-1 text-sm text-slate-500">Sign in to Nova support</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-indigo-900/5">

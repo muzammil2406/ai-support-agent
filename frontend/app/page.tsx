@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import NovaMark from '@/components/brand/NovaMark';
 
 const FEATURES = [
   {
@@ -66,11 +67,9 @@ export default function HomePage() {
         {/* Nav */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 shadow-lg shadow-indigo-500/30">
-              <Sparkle className="h-5 w-5 text-white" />
-            </span>
+            <NovaMark className="h-9 w-9 rounded-xl shadow-lg shadow-indigo-500/30" />
             <span className="text-sm font-bold uppercase tracking-widest text-slate-700">
-              Aurora
+              Nova
             </span>
           </div>
           <nav className="flex gap-2">
@@ -104,7 +103,7 @@ export default function HomePage() {
               that knows when to call a human.
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
-              Aurora answers instantly, checks real order data, searches a
+              Nova answers instantly, checks real order data, searches a
               knowledge base by meaning, and hands off to your team the moment
               a customer needs a human.
             </p>
@@ -129,10 +128,8 @@ export default function HomePage() {
             <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-indigo-200/50 to-violet-200/50 blur-2xl" />
             <div className="relative rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-indigo-900/10">
               <div className="flex items-center gap-2 rounded-t-3xl bg-gradient-to-r from-indigo-600 to-violet-500 px-4 py-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/30">
-                  <Sparkle className="h-3.5 w-3.5 text-white" />
-                </span>
-                <span className="text-sm font-semibold text-white">Aurora</span>
+                <NovaMark className="h-7 w-7 rounded-full ring-1 ring-white/30" />
+                <span className="text-sm font-semibold text-white">Nova</span>
                 <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-50">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
                   Online
@@ -192,7 +189,7 @@ export default function HomePage() {
         {/* CTA */}
         <section className="mt-24 overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 py-12 text-center shadow-xl shadow-indigo-600/25">
           <h2 className="text-2xl font-bold text-white sm:text-3xl">
-            Try Aurora with your own account
+            Try Nova with your own account
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-indigo-100">
             Create an account, open a chat, and ask about ORD-1002. Support
@@ -207,18 +204,10 @@ export default function HomePage() {
         </section>
 
         <footer className="mt-16 border-t border-slate-200 pt-6 text-center text-sm text-slate-400">
-          Aurora · Stellar Goods demo — Next.js · NestJS · LangGraph · pgvector ·
+          Nova · Stellar Goods demo — Next.js · NestJS · LangGraph · pgvector ·
           MongoDB · Upstash Redis
         </footer>
       </div>
     </main>
-  );
-}
-
-function Sparkle({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M12 2l1.9 5.7a2 2 0 001.3 1.3L21 11l-5.8 2a2 2 0 00-1.3 1.3L12 20l-1.9-5.7a2 2 0 00-1.3-1.3L3 11l5.8-2a2 2 0 001.3-1.3L12 2z" />
-    </svg>
   );
 }

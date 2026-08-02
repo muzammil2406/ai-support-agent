@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearAuth, getUser } from '@/lib/api';
+import NovaMark from '@/components/brand/NovaMark';
 import { createChatSocket } from '@/lib/socket';
 import type { ChatSocket } from '@/lib/socket';
 import type { ChatMessage, ToolCall } from '@/lib/types';
@@ -279,11 +280,9 @@ export default function ChatWidget() {
       <header className="relative z-10 bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-500 px-4 py-3 shadow-lg shadow-indigo-900/10">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 ring-2 ring-white/30 backdrop-blur">
-              <SparkleIcon className="h-5 w-5 text-white" />
-            </div>
+            <NovaMark className="h-10 w-10 rounded-full shadow-lg shadow-indigo-900/20 ring-2 ring-white/30" />
             <div>
-              <h1 className="text-sm font-bold text-white">Aurora</h1>
+              <h1 className="text-sm font-bold text-white">Nova</h1>
               <p className="text-xs text-indigo-100">
                 {escalated
                   ? 'A human agent is on the way'
@@ -352,15 +351,13 @@ export default function ChatWidget() {
           {firstTurn && (
             <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-indigo-900/5">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 shadow-lg shadow-indigo-500/30">
-                  <SparkleIcon className="h-6 w-6 text-white" />
-                </div>
+                <NovaMark className="h-11 w-11 shrink-0 rounded-2xl shadow-lg shadow-indigo-500/30" />
                 <div>
                   <p className="text-lg font-bold text-slate-900">
                     Hi {user?.name?.split(' ')[0] || 'there'} 👋
                   </p>
                   <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    I'm Aurora, the Stellar Goods assistant. Ask me about your
+                    I'm Nova, the Stellar Goods assistant. Ask me about your
                     order, shipping, returns, billing or products — or tap a
                     suggestion to get started.
                   </p>
@@ -489,10 +486,10 @@ export default function ChatWidget() {
               disabled={streaming || cooldownSeconds > 0}
               placeholder={
                 streaming
-                  ? 'Aurora is responding…'
+                  ? 'Nova is responding…'
                   : cooldownSeconds > 0
                     ? `Rate limited — retry in ${cooldownSeconds}s`
-                    : 'Message Aurora…'
+                    : 'Message Nova…'
               }
               className="h-9 flex-1 bg-transparent px-1 text-sm text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-60"
             />
@@ -506,7 +503,7 @@ export default function ChatWidget() {
             </button>
           </form>
           <p className="mt-1.5 px-1 text-center text-[11px] text-slate-400">
-            Aurora is an AI assistant — verify critical details with our support
+            Nova is an AI assistant — verify critical details with our support
             team.
           </p>
         </div>
@@ -518,11 +515,7 @@ export default function ChatWidget() {
 // ── Message rendering ──────────────────────────────────────────────────────
 
 function Avatar() {
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/25">
-      <SparkleIcon className="h-4 w-4 text-white" />
-    </div>
-  );
+  return <NovaMark className="h-8 w-8 rounded-full shadow-md shadow-indigo-500/25" />;
 }
 
 function MessageRow({ msg }: { msg: DisplayMessage }) {
@@ -568,14 +561,6 @@ function MessageRow({ msg }: { msg: DisplayMessage }) {
 }
 
 // ── Icons (inline, no extra deps) ──────────────────────────────────────────
-
-function SparkleIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M12 2l1.9 5.7a2 2 0 001.3 1.3L21 11l-5.8 2a2 2 0 00-1.3 1.3L12 20l-1.9-5.7a2 2 0 00-1.3-1.3L3 11l5.8-2a2 2 0 001.3-1.3L12 2z" />
-    </svg>
-  );
-}
 
 function SendIcon({ className }: { className?: string }) {
   return (

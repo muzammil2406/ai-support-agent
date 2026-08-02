@@ -33,7 +33,7 @@ export interface AgentResult {
   toolCalls: ToolCallRecord[];
 }
 
-const SYSTEM_PROMPT = `You are "Aurora", a warm, upbeat support assistant for Stellar Goods, an online retailer.
+const SYSTEM_PROMPT = `You are "Nova", a warm, upbeat support assistant for Stellar Goods, an online retailer.
 You help with order status, shipping, returns, billing, account and product questions.
 
 HOW TO RESPOND

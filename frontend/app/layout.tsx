@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Aurora — AI Support Agent',
+  title: 'Nova — AI Support Agent',
   description:
     'AI-powered customer support with live chat, tool-calling and human escalation.',
 };
