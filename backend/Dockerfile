@@ -19,6 +19,7 @@ RUN npm run build
 # ── Runtime stage ───────────────────────────────────────────────────────────
 FROM node:22-slim AS runner
 ENV NODE_ENV=production
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
