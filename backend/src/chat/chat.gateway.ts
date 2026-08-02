@@ -176,6 +176,8 @@ export class ChatGateway
         { sessionId, userId },
         {
           onToken: (text) => client.emit('agent.token', { sessionId, text }),
+          onToolStart: (name, args) =>
+            client.emit('agent.tool_start', { sessionId, name, args }),
           onToolCall: (name, result) =>
             client.emit('agent.tool_call', { sessionId, name, result }),
         },

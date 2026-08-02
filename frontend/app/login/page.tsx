@@ -38,16 +38,26 @@ function LoginForm() {
     }
   }
 
+  function fillDemo(role: 'customer' | 'support') {
+    setEmail(role === 'customer' ? 'demo@stellar.dev' : 'support@stellar.dev');
+    setPassword('password123');
+    setError(null);
+  }
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-100 via-slate-50 to-violet-100 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">Welcome back</h1>
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 shadow-lg shadow-indigo-500/30">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 text-white">
+              <path d="M12 2l1.9 5.7a2 2 0 001.3 1.3L21 11l-5.8 2a2 2 0 00-1.3 1.3L12 20l-1.9-5.7a2 2 0 00-1.3-1.3L3 11l5.8-2a2 2 0 001.3-1.3L12 2z" />
+            </svg>
+          </span>
+          <h1 className="mt-3 text-2xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to Aurora support</p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-indigo-900/5">
           <div>
             <label className="block text-sm font-medium text-slate-700">Email</label>
             <input
@@ -55,7 +65,7 @@ function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
               placeholder="you@example.com"
             />
           </div>
@@ -66,19 +76,21 @@ function LoginForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700 ring-1 ring-red-100">
+              {error}
+            </p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-60"
+            className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:brightness-110 disabled:opacity-60"
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
@@ -86,18 +98,33 @@ function LoginForm() {
 
         <p className="mt-4 text-center text-sm text-slate-500">
           New here?{' '}
-          <Link href="/register" className="font-medium text-indigo-600 hover:underline">
+          <Link href="/register" className="font-semibold text-indigo-600 hover:underline">
             Create an account
           </Link>
         </p>
 
-        <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-100/60 p-4 text-xs text-slate-600">
-          <p className="font-semibold text-slate-700">Demo accounts</p>
-          <p className="mt-1">
-            customer: <code className="font-mono">demo@stellar.dev</code> / <code>password123</code>
-          </p>
-          <p>
-            support: <code className="font-mono">support@stellar.dev</code> / <code>password123</code>
+        <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/70 p-4 text-xs text-slate-600 backdrop-blur">
+          <p className="font-semibold text-slate-700">Quick demo login</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => fillDemo('customer')}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
+            >
+              <span className="block font-medium text-slate-700">Customer</span>
+              <code className="font-mono text-[11px] text-slate-500">demo@stellar.dev</code>
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemo('support')}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
+            >
+              <span className="block font-medium text-slate-700">Support</span>
+              <code className="font-mono text-[11px] text-slate-500">support@stellar.dev</code>
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Password: <code className="font-mono">password123</code>
           </p>
         </div>
       </div>

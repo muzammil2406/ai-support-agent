@@ -28,10 +28,21 @@ export function createEscalateToHumanTool(
         });
       }
 
+      const current = await sessions.getSession(context.sessionId);
+      if (current?.escalatedToHuman && current.ticketId) {
+        return JSON.stringify({
+          escalated: true,
+          alreadyEscalated: true,
+          ticketId: current.ticketId,
+          message: 'This chat is already being handled by a human agent.',
+        });
+      }
+
       const ticket = await sessions.escalate(context.sessionId, reason);
       return JSON.stringify(
         {
           escalated: true,
+          alreadyEscalated: false,
           ticketId: ticket.id,
           message:
             'A human support agent has been notified and will join this chat shortly.',
