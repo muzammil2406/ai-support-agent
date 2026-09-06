@@ -11,14 +11,13 @@ An agentic customer-support system. Users chat with an AI agent through a live c
 - **Agentic tool use, not canned responses** — the LLM plans tool calls, the backend executes them with real logic:
   - `get_order_status` — order lookup scoped to the **authenticated user** (JWT identity injected into the tool; the model never guesses who you are).
   - `faq_lookup` — semantic knowledge-base search over **pgvector** (`ORDER BY embedding <=> query LIMIT 5`).
-  - `escalate_to_human` — creates a support ticket, hands the live chat to a human agent, and (optional) publishes the escalation to **AWS SQS** for an eventing pipeline.
+  - `escalate_to_human` — creates a support ticket and hands the live chat to a human agent.
 - **Security-first scoping** — 1 order → direct answer, multiple → the agent lists them and asks which one, zero → it says so. No cross-user data leakage.
 - **Polyglot persistence**:
   - **PostgreSQL (Neon)** via Prisma — users, orders, tickets, and pgvector FAQ embeddings.
   - **MongoDB Atlas** via Mongoose — chat transcripts/session lifecycle, conversation summaries, plus analytics computed with a single `$facet` aggregation pipeline.
   - **Upstash Redis** — session presence state, rate limiting, and the **BullMQ** job queue.
 - **Post-conversation processing (BullMQ)** — when a session is `resolved` or `closed`, a job is enqueued (3 attempts, exponential backoff) and a worker summarizes the transcript via Groq/Gemini into JSON `{ summary, topics, outcome }`, persisted to `conversation_summaries`. A JWT-protected queue monitor exposes live job counts at `GET /api/queue/status`.
-- **Escalation eventing add-on (AWS, optional)** — an isolated pipeline (`aws/` folder): an SQS queue + DLQ, a Lambda consumer writing to DynamoDB, and a CloudWatch alarm on queue depth. Enabled per-environment via env flags; entirely dormant on Render by default.
 - **Human-in-the-loop** — live support dashboard with transcripts, escalation feed, and analytics; escalation is idempotent (no duplicate tickets).
 - **Production hardened** — fixes malformed LLM tool calls (Groq returns `arguments: "null"` on optional-only schemas, which silently kills tool execution) via a normalizing model wrapper; Docker + auto-deploy + health checks on Postgres/Mongo/Redis.
 
@@ -34,7 +33,6 @@ NestJS API ──► JWT Auth guard ──► Chat Gateway (Socket.IO)
         │      ├─ get_order_status   └─► Prisma (PostgreSQL)
         │      ├─ faq_lookup            └─ pgvector top-5 ANN
         │      └─ escalate_to_human     └─ Ticket (Postgres) + session flip
-        │                                   └─ (opt.) AWS SQS ─► Lambda ─► DynamoDB
         │
         ├── Mongoose ──► MongoDB Atlas (chat transcripts, summaries, analytics)
         ├── Upstash Redis (presence state, rate limits)
@@ -48,8 +46,8 @@ NestJS API ──► JWT Auth guard ──► Chat Gateway (Socket.IO)
 | Backend    | NestJS 11, Socket.IO, LangGraph, LangChain, Groq / Gemini, Passport-JWT, BullMQ |
 | Frontend   | Next.js 14 (App Router), React 18, Tailwind CSS, Socket.IO client      |
 | Databases  | PostgreSQL (Neon + Prisma + pgvector), MongoDB Atlas (Mongoose), Upstash Redis |
-| Eventing   | BullMQ (+ ioredis), optional AWS SQS → Lambda → DynamoDB + CloudWatch alarm |
-| Infra      | Docker, Render (backend), Vercel (frontend), Cloud Run (cloudbuild.yaml), CloudFormation (aws/) |
+| Eventing   | BullMQ (+ ioredis)                                                        |
+| Infra      | Docker, Render (backend), Vercel (frontend), Cloud Run (cloudbuild.yaml)  |
 
 ## Getting Started
 
@@ -85,9 +83,6 @@ GROQ_API_KEY / GOOGLE_API_KEY
 EMBEDDINGS_MODEL      # text-embedding-004 (768 dims, matches pgvector column)
 JWT_SECRET / JWT_EXPIRES_IN
 PORT / CORS_ORIGIN
-# Optional AWS escalation add-on:
-AWS_SQS_ESCALATIONS_ENABLED   # "true" to publish escalations to SQS
-AWS_REGION / AWS_SQS_ESCALATION_QUEUE_URL
 ```
 
 ### 2. Frontend
@@ -134,7 +129,6 @@ npm run dev                  # http://localhost:3000
 - **Frontend:** `frontend` deployed to Vercel (production alias).
 - **DB migrations:** run automatically at container boot (`npx prisma migrate deploy`).
 - **Post-conversation queue:** driven by `BULLMQ_REDIS_URL` (set it in the Render dashboard to your Upstash `rediss://` URL; otherwise the worker falls back to `redis://localhost:6379`).
-- **AWS escalation add-on (optional):** deploy the isolated stack from `aws/` with `aws/scripts/deploy.ps1` (CloudFormation: SQS + DLQ, DynamoDB, Lambda, CloudWatch alarm). Then enable it via the env flags above. Full flow documented in [`aws/README.md`](aws/README.md).
 
 ## Project Structure
 
@@ -146,12 +140,10 @@ backend/
     chat/            # Socket.IO gateway, WS JWT guard, Mongo session schema
     sessions/        # session lifecycle + escalation (Mongo + Redis + Postgres ticket)
     queue/           # BullMQ post-conversation queue (worker, summarizer, monitor endpoint)
-    aws/             # optional SQS escalation publisher (env-gated no-op)
     analytics/       # $facet aggregation over chat-sessions
     auth/            # JWT auth (register/login, guards, roles)
     embeddings/      # Gemini embeddings → pgvector
     redis/           # Upstash Redis service + rate limiting
-aws/                 # optional escalation eventing stack (CloudFormation + Lambda)
 frontend/
   app/               # Next.js routes (landing, chat, dashboard, login, register)
   components/        # ChatWidget, dashboard panels, Nova brand mark
