@@ -8,6 +8,7 @@ import { EmbeddingsModule } from './embeddings/embeddings.module';
 import { HealthController } from './health.controller';
 import { MongoModule } from './mongo/mongo.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { UsersModule } from './users/users.module';
@@ -18,6 +19,7 @@ import { UsersModule } from './users/users.module';
     PrismaModule,
     MongoModule,
     RedisModule,
+    QueueModule,
     EmbeddingsModule,
     AuthModule,
     UsersModule,

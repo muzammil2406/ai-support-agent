@@ -6,7 +6,9 @@ import {
   ChatMessage,
   ChatSession,
 } from '../chat/schemas/chat-session.schema';
+import { EscalationPublisherService } from '../aws/sqs/escalation-publisher.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PostConversationService } from '../queue/post-conversation.service';
 import { RedisService } from '../redis/redis.service';
 
 export interface SessionState {
@@ -33,6 +35,8 @@ export class SessionsService {
     @InjectModel(ChatSession.name) private readonly sessionModel: Model<ChatSession>,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly postConversation: PostConversationService,
+    private readonly escalationPublisher: EscalationPublisherService,
   ) {}
 
   async createSession(userId: string, category?: string): Promise<ChatSession> {
@@ -138,7 +142,34 @@ export class SessionsService {
     await session.save();
     await this.refreshState(session);
     this.logger.log(`Session ${sessionId} escalated → ticket ${ticket.id}`);
+    await this.publishEscalation(session, ticket.id, reason);
     return { id: ticket.id, sessionId: ticket.sessionId };
+  }
+
+  /**
+   * Fan the escalation out to the AWS SQS queue (Part 2, isolated). No-op
+   * unless the SQS publisher is enabled; failures never break escalation.
+   */
+  private async publishEscalation(
+    session: ChatSession,
+    ticketId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.escalationPublisher.publishEscalation({
+        ticketId,
+        sessionId: session.sessionId,
+        userId: session.userId,
+        reason,
+        category: session.category,
+        escalatedAt: session.escalatedAt?.toISOString() ?? new Date().toISOString(),
+        source: 'agent_tool',
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to publish escalation event: ${(err as Error).message}`,
+      );
+    }
   }
 
   async resolve(sessionId: string): Promise<ChatSession> {
@@ -147,6 +178,7 @@ export class SessionsService {
     session.resolvedAt = new Date();
     await session.save();
     await this.refreshState(session);
+    await this.enqueuePostConversationProcessing(session, 'resolved');
     return session;
   }
 
@@ -156,7 +188,33 @@ export class SessionsService {
     session.closedAt = new Date();
     await session.save();
     await this.refreshState(session);
+    await this.enqueuePostConversationProcessing(session, 'closed');
     return session;
+  }
+
+  /**
+   * After a conversation ends (resolved/closed) enqueue a BullMQ job that
+   * summarizes the transcript via LLM and writes the summary to MongoDB.
+   * Failures here are logged but must never break the core resolve/close flow.
+   */
+  private async enqueuePostConversationProcessing(
+    session: ChatSession,
+    terminalStatus: 'resolved' | 'closed',
+  ): Promise<void> {
+    try {
+      await this.postConversation.enqueuePostConversationProcessing({
+        sessionId: session.sessionId,
+        userId: session.userId,
+        terminalStatus,
+        ticketId: session.ticketId,
+        escalationReason: session.escalationReason,
+        endedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to enqueue post-conversation job for ${session.sessionId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /** Active + escalated sessions for the support dashboard. */
