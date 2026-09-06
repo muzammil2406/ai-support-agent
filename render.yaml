@@ -42,12 +42,3 @@ services:
       # BullMQ, so this is a separate connection.
       - key: BULLMQ_REDIS_URL
         sync: false
-      # ── AWS SQS escalation feed (Part 2 — optional, isolated) ──────
-      - key: AWS_SQS_ESCALATIONS_ENABLED
-        value: "false"
-      - key: AWS_REGION
-        value: us-east-1
-      - key: AWS_SQS_ESCALATION_QUEUE_URL
-        sync: false
-      - key: AWS_SQS_ESCALATION_QUEUE_NAME
-        sync: false

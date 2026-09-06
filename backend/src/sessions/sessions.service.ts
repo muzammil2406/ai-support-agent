@@ -6,7 +6,6 @@ import {
   ChatMessage,
   ChatSession,
 } from '../chat/schemas/chat-session.schema';
-import { EscalationPublisherService } from '../aws/sqs/escalation-publisher.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PostConversationService } from '../queue/post-conversation.service';
 import { RedisService } from '../redis/redis.service';
@@ -36,7 +35,6 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly postConversation: PostConversationService,
-    private readonly escalationPublisher: EscalationPublisherService,
   ) {}
 
   async createSession(userId: string, category?: string): Promise<ChatSession> {
@@ -142,34 +140,7 @@ export class SessionsService {
     await session.save();
     await this.refreshState(session);
     this.logger.log(`Session ${sessionId} escalated → ticket ${ticket.id}`);
-    await this.publishEscalation(session, ticket.id, reason);
     return { id: ticket.id, sessionId: ticket.sessionId };
-  }
-
-  /**
-   * Fan the escalation out to the AWS SQS queue (Part 2, isolated). No-op
-   * unless the SQS publisher is enabled; failures never break escalation.
-   */
-  private async publishEscalation(
-    session: ChatSession,
-    ticketId: string,
-    reason: string,
-  ): Promise<void> {
-    try {
-      await this.escalationPublisher.publishEscalation({
-        ticketId,
-        sessionId: session.sessionId,
-        userId: session.userId,
-        reason,
-        category: session.category,
-        escalatedAt: session.escalatedAt?.toISOString() ?? new Date().toISOString(),
-        source: 'agent_tool',
-      });
-    } catch (err) {
-      this.logger.error(
-        `Failed to publish escalation event: ${(err as Error).message}`,
-      );
-    }
   }
 
   async resolve(sessionId: string): Promise<ChatSession> {

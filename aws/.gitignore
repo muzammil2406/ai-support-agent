@@ -1,7 +1,0 @@
-# Lambda bundle
-lambda/node_modules/
-lambda/function.zip
-
-# Local credentials / env
-.env
-.env.local

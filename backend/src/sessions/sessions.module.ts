@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { AwsEscalationModule } from '../aws/sqs/aws-escalation.module';
 import { ChatSession, ChatSessionSchema } from '../chat/schemas/chat-session.schema';
 import { QueueModule } from '../queue/queue.module';
 import { SessionsController } from './sessions.controller';
@@ -17,7 +16,6 @@ import { SessionsService } from './sessions.service';
       { name: ChatSession.name, schema: ChatSessionSchema },
     ]),
     QueueModule,
-    AwsEscalationModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService],
