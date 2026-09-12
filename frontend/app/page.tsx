@@ -75,15 +75,9 @@ export default function HomePage() {
           <nav className="flex gap-2">
             <Link
               href="/login"
-              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/register"
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500"
             >
-              Create account
+              Log in
             </Link>
           </nav>
         </header>
@@ -109,7 +103,7 @@ export default function HomePage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/register"
+                href="/login"
                 className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition hover:brightness-110"
               >
                 Start a conversation
@@ -189,17 +183,17 @@ export default function HomePage() {
         {/* CTA */}
         <section className="mt-24 overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 py-12 text-center shadow-xl shadow-indigo-600/25">
           <h2 className="text-2xl font-bold text-white sm:text-3xl">
-            Try Nova with your own account
+            Try Nova
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-indigo-100">
-            Create an account, open a chat, and ask about ORD-1002. Support
-            staff can try the live dashboard and escalation flow.
+            Log in with a demo account, open a chat, and ask about ORD-1002.
+            Support staff can try the live dashboard and escalation flow.
           </p>
           <Link
-            href="/register"
+            href="/login"
             className="mt-6 inline-block rounded-xl bg-white px-6 py-3 text-sm font-semibold text-indigo-700 shadow-lg transition hover:bg-indigo-50"
           >
-            Get started free
+            Get started
           </Link>
         </section>
 

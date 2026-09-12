@@ -71,17 +71,6 @@ export function login(email: string, password: string): Promise<AuthResponse> {
   });
 }
 
-export function register(
-  email: string,
-  password: string,
-  name?: string,
-): Promise<AuthResponse> {
-  return api<AuthResponse>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ email, password, name }),
-  });
-}
-
 // ── Sessions ────────────────────────────────────────────────────────────────
 export async function fetchDashboardSessions(): Promise<DashboardSession[]> {
   return api<DashboardSession[]>('/sessions');

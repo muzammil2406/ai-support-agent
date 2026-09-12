@@ -2,7 +2,6 @@
 
 import { Suspense } from 'react';
 import { FormEvent, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { login, setAuth } from '@/lib/api';
 import NovaMark from '@/components/brand/NovaMark';
@@ -92,13 +91,6 @@ function LoginForm() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        <p className="mt-4 text-center text-sm text-slate-500">
-          New here?{' '}
-          <Link href="/register" className="font-semibold text-indigo-600 hover:underline">
-            Create an account
-          </Link>
-        </p>
 
         <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/70 p-4 text-xs text-slate-600 backdrop-blur">
           <p className="font-semibold text-slate-700">Quick demo login</p>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const PROTECTED = ['/chat', '/dashboard'];
-const AUTH_PAGES = ['/login', '/register'];
+const AUTH_PAGES = ['/login'];
 
 export function middleware(req: NextRequest) {
   const token = req.cookies.get('auth_token')?.value;
@@ -28,5 +28,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/chat/:path*', '/dashboard/:path*', '/login', '/register'],
+  matcher: ['/chat/:path*', '/dashboard/:path*', '/login'],
 };

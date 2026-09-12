@@ -182,7 +182,7 @@ export class AgentService {
     }
     return new NormalizingChatGroq({
       apiKey: this.config.get('GROQ_API_KEY'),
-      model: this.config.get<string>('LLM_MODEL', 'llama-3.3-70b-versatile'),
+      model: this.config.get<string>('LLM_MODEL', 'openai/gpt-oss-120b'),
       temperature: 0.2,
     });
   }
