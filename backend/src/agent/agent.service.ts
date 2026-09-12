@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import {
@@ -212,6 +212,12 @@ export class AgentService {
     const history: BaseMessage[] = [];
 
     if (context.sessionId) {
+      if (context.userId) {
+        const session = await this.sessions.getSession(context.sessionId);
+        if (session && session.userId && session.userId !== context.userId) {
+          throw new ForbiddenException('Access denied to this session.');
+        }
+      }
       const recent = await this.sessions.getRecentMessages(context.sessionId, 12);
       for (const m of recent) {
         if (m.role === 'user') history.push(new HumanMessage(String(m.content)));
