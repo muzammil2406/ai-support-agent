@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { FormEvent, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { login, setAuth } from '@/lib/api';
+import { login } from '@/lib/api';
 import NovaMark from '@/components/brand/NovaMark';
 
 export default function LoginPage() {
@@ -27,8 +27,7 @@ function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      const { accessToken, user } = await login(email, password);
-      setAuth(accessToken, user);
+      const { user } = await login(email, password);
       const next = searchParams.get('next') ?? (user.role === 'customer' ? '/chat' : '/dashboard');
       router.replace(next);
       router.refresh();

@@ -39,17 +39,25 @@ export default function SessionsPanel() {
     refresh();
     const poll = window.setInterval(refresh, 10_000);
 
-    const socket = createChatSocket();
-    socketRef.current = socket;
-    socket.on('connect', () => socket.emit('chat.join', {}));
-    socket.on('session.open', refresh);
-    socket.on('session.escalated', refresh);
-    socket.on('session.updated', refresh);
+    let active = true;
+    let socket: ChatSocket | null = null;
+    createChatSocket()
+      .then((s) => {
+        if (!active) { s.disconnect(); return; }
+        socket = s;
+        socketRef.current = s;
+        s.on('connect', () => s.emit('chat.join', {}));
+        s.on('session.open', refresh);
+        s.on('session.escalated', refresh);
+        s.on('session.updated', refresh);
+      })
+      .catch(() => {});
 
     return () => {
+      active = false;
       window.clearInterval(poll);
-      socket.removeAllListeners();
-      socket.disconnect();
+      socket?.removeAllListeners();
+      socket?.disconnect();
     };
   }, [refresh]);
 

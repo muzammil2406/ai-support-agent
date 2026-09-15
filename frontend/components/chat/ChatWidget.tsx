@@ -8,11 +8,11 @@ import {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearAuth, getUser } from '@/lib/api';
+import { logout, me } from '@/lib/api';
 import NovaMark from '@/components/brand/NovaMark';
 import { createChatSocket } from '@/lib/socket';
 import type { ChatSocket } from '@/lib/socket';
-import type { ChatMessage, ToolCall } from '@/lib/types';
+import type { ChatMessage, ToolCall, User } from '@/lib/types';
 
 type DisplayMessage = ChatMessage & { streaming?: boolean };
 
@@ -60,7 +60,7 @@ const SUGGESTIONS = [
 
 export default function ChatWidget() {
   const router = useRouter();
-  const user = getUser();
+  const [user, setUser] = useState<User | null>(null);
 
   const socketRef = useRef<ChatSocket | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -107,128 +107,136 @@ export default function ChatWidget() {
   }, []);
 
   useEffect(() => {
-    const socket = createChatSocket();
-    socketRef.current = socket;
+    let active = true;
+    let socket: ChatSocket | null = null;
 
-    socket.on('connect', () => {
-      setConnected(true);
-      const resume = localStorage.getItem('sessionId');
-      socket.emit('chat.join', resume ? { sessionId: resume } : {});
-    });
+    me()
+      .then((user) => { if (active) setUser(user); })
+      .catch(() => {});
 
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('session.ready', handleSessionReady);
+    createChatSocket()
+      .then((s) => {
+        if (!active) { s.disconnect(); return; }
+        socket = s;
+        socketRef.current = s;
 
-    socket.on('agent.token', (payload: { text: string }) => {
-      setWaiting(false);
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'assistant' && last.streaming) {
-          const next = [...prev];
-          next[next.length - 1] = { ...last, content: last.content + payload.text };
-          return next;
-        }
-        return [...prev, { role: 'assistant', content: payload.text, streaming: true }];
-      });
-    });
-
-    socket.on('agent.tool_start', (payload: ToolStartPayload) => {
-      setWaiting(false);
-      setPendingTools((prev) =>
-        prev.some((t) => t.name === payload.name) ? prev : [...prev, payload],
-      );
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'assistant') return prev;
-        return [...prev, { role: 'assistant', content: '', streaming: true }];
-      });
-    });
-
-    socket.on('agent.tool_call', (payload: { name: string; result?: unknown }) => {
-      setPendingTools((prev) => prev.filter((t) => t.name !== payload.name));
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant') {
-          next[next.length - 1] = {
-            ...last,
-            toolCalls: [
-              ...(last.toolCalls ?? []),
-              { name: payload.name, result: payload.result },
-            ],
-          };
-        }
-        return next;
-      });
-    });
-
-    socket.on(
-      'agent.message',
-      (payload: { content: string; toolCalls?: ChatMessage['toolCalls'] }) => {
-        setMessages((prev) => {
-          const next = [...prev];
-          let idx = -1;
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'assistant') {
-              idx = i;
-              break;
-            }
-          }
-          const finalMsg: DisplayMessage = {
-            role: 'assistant',
-            content: payload.content,
-            toolCalls: payload.toolCalls,
-          };
-          if (idx >= 0) {
-            next[idx] = {
-              ...finalMsg,
-              toolCalls: next[idx].toolCalls ?? finalMsg.toolCalls,
-            };
-          } else {
-            next.push(finalMsg);
-          }
-          return next;
+        s.on('connect', () => {
+          setConnected(true);
+          const resume = localStorage.getItem('sessionId');
+          s.emit('chat.join', resume ? { sessionId: resume } : {});
         });
-        setStreaming(false);
-        setWaiting(false);
-        setPendingTools([]);
-      },
-    );
 
-    socket.on('agent.error', (payload: { message: string }) => {
-      setError(payload.message);
-      setStreaming(false);
-      setWaiting(false);
-      setPendingTools([]);
-    });
+        s.on('disconnect', () => setConnected(false));
+        s.on('session.ready', handleSessionReady);
 
-    socket.on(
-      'escalated',
-      (payload: { sessionId: string; ticketId: string; reason: string }) => {
-        setEscalated(true);
-        setTicketId(payload.ticketId);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'escalation',
-            content: `A human support agent has been notified (ticket #${payload.ticketId.slice(-6)}). They will join this chat shortly.`,
+        s.on('agent.token', (payload: { text: string }) => {
+          setWaiting(false);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'assistant' && last.streaming) {
+              const next = [...prev];
+              next[next.length - 1] = { ...last, content: last.content + payload.text };
+              return next;
+            }
+            return [...prev, { role: 'assistant', content: payload.text, streaming: true }];
+          });
+        });
+
+        s.on('agent.tool_start', (payload: ToolStartPayload) => {
+          setWaiting(false);
+          setPendingTools((prev) =>
+            prev.some((t) => t.name === payload.name) ? prev : [...prev, payload],
+          );
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'assistant') return prev;
+            return [...prev, { role: 'assistant', content: '', streaming: true }];
+          });
+        });
+
+        s.on('agent.tool_call', (payload: { name: string; result?: unknown }) => {
+          setPendingTools((prev) => prev.filter((t) => t.name !== payload.name));
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              next[next.length - 1] = {
+                ...last,
+                toolCalls: [
+                  ...(last.toolCalls ?? []),
+                  { name: payload.name, result: payload.result },
+                ],
+              };
+            }
+            return next;
+          });
+        });
+
+        s.on(
+          'agent.message',
+          (payload: { content: string; toolCalls?: ChatMessage['toolCalls'] }) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              let idx = -1;
+              for (let i = next.length - 1; i >= 0; i--) {
+                if (next[i].role === 'assistant') { idx = i; break; }
+              }
+              const finalMsg: DisplayMessage = {
+                role: 'assistant',
+                content: payload.content,
+                toolCalls: payload.toolCalls,
+              };
+              if (idx >= 0) {
+                next[idx] = { ...finalMsg, toolCalls: next[idx].toolCalls ?? finalMsg.toolCalls };
+              } else {
+                next.push(finalMsg);
+              }
+              return next;
+            });
+            setStreaming(false);
+            setWaiting(false);
+            setPendingTools([]);
           },
-        ]);
-      },
-    );
+        );
 
-    socket.on('rate_limited', (payload: { retryAfterMs: number }) => {
-      setCooldownUntil(Date.now() + payload.retryAfterMs);
-      setError('You are sending messages too quickly. Please slow down.');
-    });
+        s.on('agent.error', (payload: { message: string }) => {
+          setError(payload.message);
+          setStreaming(false);
+          setWaiting(false);
+          setPendingTools([]);
+        });
 
-    socket.on('session.resolved', () => {
-      setError(null);
-    });
+        s.on(
+          'escalated',
+          (payload: { sessionId: string; ticketId: string; reason: string }) => {
+            setEscalated(true);
+            setTicketId(payload.ticketId);
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'escalation',
+                content: `A human support agent has been notified (ticket #${payload.ticketId.slice(-6)}). They will join this chat shortly.`,
+              },
+            ]);
+          },
+        );
+
+        s.on('rate_limited', (payload: { retryAfterMs: number }) => {
+          setCooldownUntil(Date.now() + payload.retryAfterMs);
+          setError('You are sending messages too quickly. Please slow down.');
+        });
+
+        s.on('session.resolved', () => {
+          setError(null);
+        });
+      })
+      .catch(() => setConnected(false));
 
     return () => {
-      socket.removeAllListeners();
-      socket.disconnect();
+      active = false;
+      socket?.removeAllListeners();
+      socket?.disconnect();
+      socketRef.current = null;
     };
   }, [handleSessionReady]);
 
@@ -263,7 +271,7 @@ export default function ChatWidget() {
   }
 
   function onSignOut() {
-    clearAuth();
+    logout();
     localStorage.removeItem('sessionId');
     router.replace('/login');
     router.refresh();
