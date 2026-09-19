@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Model } from 'mongoose';
+import { Order } from '../../mongo/schemas/order.schema';
 
 /**
  * LangChain tool: order lookup scoped to the authenticated customer.
@@ -15,7 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
  *  - No user context (support/admin/anonymous)     → global lookup by orderNumber.
  */
 export function createOrderStatusTool(
-  prisma: PrismaService,
+  orderModel: Model<Order>,
   userId?: string,
 ): DynamicStructuredTool {
   return new DynamicStructuredTool({
@@ -30,10 +31,11 @@ export function createOrderStatusTool(
     }),
     func: async ({ orderNumber }) => {
       if (userId) {
-        const ownedOrders = await prisma.order.findMany({
-          where: { userId },
-          orderBy: { createdAt: 'desc' },
-        });
+        const ownedOrders = await orderModel
+          .find({ userId })
+          .sort({ createdAt: 'desc' })
+          .lean()
+          .exec();
 
         if (orderNumber) {
           const order = ownedOrders.find((o) => o.orderNumber === orderNumber);
@@ -83,10 +85,7 @@ export function createOrderStatusTool(
         });
       }
 
-      const order = await prisma.order.findUnique({
-        where: { orderNumber },
-        include: { user: { select: { email: true } } },
-      });
+      const order = await orderModel.findOne({ orderNumber }).lean().exec();
       if (!order) {
         return JSON.stringify({
           found: false,
@@ -103,7 +102,7 @@ function formatOrder(order: {
   status: string;
   itemCount: number;
   itemName: string | null;
-  total: { toString(): string };
+  total: number;
   createdAt: Date;
 }): Record<string, unknown> {
   return {

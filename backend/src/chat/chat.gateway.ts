@@ -1,5 +1,4 @@
 import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -15,8 +14,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { AgentService } from '../agent/agent.service';
 import { ToolCallRecord } from '../agent/agent.service';
-import { RedisService } from '../redis/redis.service';
-import { RateLimitService } from '../redis/rate-limit.service';
+import { RateLimitService } from '../ratelimit/rate-limit.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { ChatMessageDto } from './dto/message.dto';
 
@@ -38,8 +36,6 @@ export class ChatGateway
     private readonly sessions: SessionsService,
     private readonly agent: AgentService,
     private readonly rateLimit: RateLimitService,
-    private readonly redis: RedisService,
-    private readonly config: ConfigService,
   ) {}
 
   afterInit(): void {
@@ -70,14 +66,8 @@ export class ChatGateway
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
-    const { sessionId } = client.data;
-    if (sessionId) {
-      await this.redis.setJson(
-        `presence:${sessionId}`,
-        { online: false, disconnectedAt: new Date().toISOString() },
-        60 * 10,
-      );
-    }
+    // Nothing to clean up: transcript + status live in Mongo, presence is
+    // derived from session status, and rate-limit buckets expire in memory.
   }
 
   // ── Join / resume a session (idempotent — safe across reconnects) ───────
@@ -107,11 +97,6 @@ export class ChatGateway
 
     client.data.sessionId = sessionId;
     await client.join(`session:${sessionId}`);
-    await this.redis.setJson(
-      `presence:${sessionId}`,
-      { online: true, connectedAt: new Date().toISOString() },
-      60 * 60,
-    );
 
     const session = await this.sessions.requireSession(sessionId);
     client.emit('session.ready', {

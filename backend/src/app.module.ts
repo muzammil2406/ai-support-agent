@@ -7,19 +7,17 @@ import { ChatModule } from './chat/chat.module';
 import { EmbeddingsModule } from './embeddings/embeddings.module';
 import { HealthController } from './health.controller';
 import { MongoModule } from './mongo/mongo.module';
-import { PrismaModule } from './prisma/prisma.module';
-import { QueueModule } from './queue/queue.module';
-import { RedisModule } from './redis/redis.module';
+import { RatelimitModule } from './ratelimit/ratelimit.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { SummariesModule } from './summaries/summaries.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule,
     MongoModule,
-    RedisModule,
-    QueueModule,
+    RatelimitModule,
+    SummariesModule,
     EmbeddingsModule,
     AuthModule,
     UsersModule,

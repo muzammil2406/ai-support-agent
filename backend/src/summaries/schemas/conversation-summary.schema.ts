@@ -2,9 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
 /**
- * Post-conversation summaries written by the BullMQ processor into MongoDB.
+ * Post-conversation summaries written when a session ends (resolved/closed).
  * Kept as a separate collection (not merged into `chat_sessions`) so the
- * existing chat-session schema/docs are untouched and the feature can be
+ * existing chat-session schema/docs are untouched and summaries can be
  * demoed/looked up independently.
  */
 @Schema({ timestamps: true, collection: 'conversation_summaries' })
@@ -29,10 +29,6 @@ export class ConversationSummary extends Document {
   /** Number of transcript messages that were summarized. */
   @Prop({ type: Number, default: 0 })
   messageCount!: number;
-
-  /** How many retries BullMQ needed before the job succeeded (0 = first try). */
-  @Prop({ type: Number, default: 0 })
-  attemptsMade!: number;
 
   @Prop({ type: String, required: true })
   summary!: string;

@@ -11,8 +11,11 @@ import {
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatGroq } from '@langchain/groq';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { FaqEntry } from '../mongo/schemas/faq-entry.schema';
+import { Order } from '../mongo/schemas/order.schema';
 import { SessionsService } from '../sessions/sessions.service';
 import { createEscalateToHumanTool } from './tools/escalate-to-human.tool';
 import { createFaqSearchTool } from './tools/faq-search.tool';
@@ -165,7 +168,8 @@ export class AgentService {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly prisma: PrismaService,
+    @InjectModel(Order.name) private readonly orderModel: Model<Order>,
+    @InjectModel(FaqEntry.name) private readonly faqModel: Model<FaqEntry>,
     private readonly embeddings: EmbeddingsService,
     private readonly sessions: SessionsService,
   ) {}
@@ -189,8 +193,8 @@ export class AgentService {
 
   private buildAgent(context: AgentContext) {
     const tools = [
-      createOrderStatusTool(this.prisma, context.userId),
-      createFaqSearchTool(this.prisma, this.embeddings),
+      createOrderStatusTool(this.orderModel, context.userId),
+      createFaqSearchTool(this.faqModel, this.embeddings),
       createEscalateToHumanTool(this.sessions, context),
     ];
     return createReactAgent({

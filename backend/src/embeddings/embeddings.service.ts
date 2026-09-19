@@ -6,14 +6,13 @@ const EMBEDDING_DIMENSIONS = 768;
 
 /**
  * Embedding provider (gemini-embedding-001, trimmed to 768 dims via
- * `outputDimensionality` — matching the pgvector column). Uses the raw
- * `@google/generative-ai` SDK because LangChain's embeddings wrapper does not
- * expose `outputDimensionality`, and `text-embedding-004` is no longer
+ * `outputDimensionality` — matching the Mongo FAQ embedding arrays). Uses the
+ * raw `@google/generative-ai` SDK because LangChain's embeddings wrapper does
+ * not expose `outputDimensionality`, and `text-embedding-004` is no longer
  * available on new Google AI keys.
  *
- * Memory note: we always embed a single text at a time (never batch), so the
- * FAQ embedding set is never held in memory — every lookup queries pgvector
- * directly.
+ * Memory note: we always embed a single text at a time (never batch); the
+ * FAQ lookup scores stored embeddings with brute-force cosine similarity.
  */
 @Injectable()
 export class EmbeddingsService {
@@ -50,10 +49,5 @@ export class EmbeddingsService {
       out.push(await this.embedQuery(text));
     }
     return out;
-  }
-
-  /** Format a numeric vector as a Postgres vector literal, e.g. `[0.1,0.2,...]`. */
-  toVectorString(vec: number[]): string {
-    return `[${vec.join(',')}]`;
   }
 }

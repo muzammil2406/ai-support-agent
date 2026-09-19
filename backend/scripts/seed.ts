@@ -1,41 +1,70 @@
 /**
- * Database seeder — run with: npx prisma db seed
+ * MongoDB seeder — run with: npm run seed
  *
- * 1. Creates demo users (customer / support_agent / admin) — idempotent.
- * 2. Recreates fake orders for the demo customer.
- * 3. Recreates the FAQ knowledge base and generates embeddings (one at a
+ * 1. Connects to MONGODB_URI (Mongoose).
+ * 2. Upserts demo users (customer / support_agent / admin) — idempotent.
+ * 3. Recreates fake orders for the demo customer.
+ * 4. Recreates the FAQ knowledge base and generates embeddings (one at a
  *    time — never batched, keeping memory flat).
- * 4. Ensures the pgvector extension + ivfflat index exist.
  *
  * Embeddings use gemini-embedding-001 trimmed to 768 dims (outputDimensionality)
- * to match the pgvector column. text-embedding-004 is no longer available on
- * new Google AI keys.
+ * and are stored as plain number[] arrays (brute-force cosine search).
  *
- * Env required: DATABASE_URL, GOOGLE_API_KEY (loaded from backend/.env by the
- * Prisma CLI; `import 'dotenv/config'` covers direct `npm run seed`).
+ * Env required: MONGODB_URI, GOOGLE_API_KEY (loaded from backend/.env via
+ * `import 'dotenv/config'`).
  */
 
 import 'dotenv/config';
+import * as mongoose from 'mongoose';
 import * as bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-
-const prisma = new PrismaClient();
 
 const EMBEDDING_DIMENSIONS = 768;
 
-async function embedQuery(text: string): Promise<number[]> {
-  const client = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
-  const model = client.getGenerativeModel({
-    model: process.env.EMBEDDINGS_MODEL ?? 'gemini-embedding-001',
-  });
-  const result = await model.embedContent({
-    content: { role: 'user', parts: [{ text }] },
-    taskType: 'RETRIEVAL_DOCUMENT',
-    outputDimensionality: EMBEDDING_DIMENSIONS,
-  } as unknown as Parameters<typeof model.embedContent>[0]);
-  return result.embedding.values;
-}
+// ── Mongoose models (plain — mirrors the NestJS schemas in src/mongo) ───────
+const UserModel = mongoose.model(
+  'UserSeed',
+  new mongoose.Schema(
+    {
+      id: { type: String, required: true, unique: true },
+      email: { type: String, required: true, unique: true, lowercase: true },
+      name: { type: String },
+      password: { type: String, required: true },
+      role: { type: String, required: true, default: 'customer' },
+    },
+    { timestamps: true, collection: 'users' },
+  ),
+);
+
+const OrderModel = mongoose.model(
+  'OrderSeed',
+  new mongoose.Schema(
+    {
+      id: { type: String, required: true, unique: true },
+      orderNumber: { type: String, required: true, unique: true },
+      userId: { type: String, index: true },
+      status: { type: String, required: true },
+      total: { type: Number, required: true },
+      itemCount: { type: Number, default: 1 },
+      itemName: { type: String },
+    },
+    { timestamps: true, collection: 'orders' },
+  ),
+);
+
+const FaqModel = mongoose.model(
+  'FaqSeed',
+  new mongoose.Schema(
+    {
+      id: { type: String, required: true, unique: true },
+      question: { type: String, required: true },
+      answer: { type: String, required: true },
+      category: { type: String, required: true, index: true },
+      embedding: { type: [Number], default: undefined },
+    },
+    { timestamps: true, collection: 'faq_entries' },
+  ),
+);
 
 // ── Demo users ──────────────────────────────────────────────────────────────
 const DEMO_PASSWORD = 'password123';
@@ -57,7 +86,7 @@ const USERS: SeedUser[] = [
 // ── Fake orders for the demo customer ───────────────────────────────────────
 interface SeedOrder {
   orderNumber: string;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+  status: string;
   total: number;
   itemCount: number;
   itemName: string;
@@ -77,7 +106,6 @@ const ORDERS: SeedOrder[] = [
   { orderNumber: 'ORD-1010', status: 'pending', total: 27.49, itemCount: 1, itemName: 'Himalayan Salt Lamp', createdAt: new Date('2026-07-05T07:58:00Z') },
 ];
 
-// Single order for the "one order" customer.
 const ONE_ORDER: SeedOrder = {
   orderNumber: 'ORD-2001',
   status: 'delivered',
@@ -87,7 +115,7 @@ const ONE_ORDER: SeedOrder = {
   createdAt: new Date('2026-06-10T15:20:00Z'),
 };
 
-// ── FAQ knowledge base (~18 entries, matches the pgvector 768-dim column) ───
+// ── FAQ knowledge base (~20 entries) ────────────────────────────────────────
 interface FaqSeed {
   question: string;
   answer: string;
@@ -217,103 +245,90 @@ const FAQ: FaqSeed[] = [
   },
 ];
 
-async function ensurePgVector(): Promise<void> {
-  await prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS vector`);
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS faq_entries_embedding_idx
-      ON faq_entries USING ivfflat (embedding vector_cosine_ops)
-      WITH (lists = 10)
-  `);
-}
+let embeddingsClient: GoogleGenerativeAI;
 
-async function seedUsers(): Promise<{
-  demoCustomerId: string;
-  oneOrderCustomerId: string;
-  noneOrderCustomerId: string;
-}> {
-  const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
-  const ids = {
-    demoCustomerId: '',
-    oneOrderCustomerId: '',
-    noneOrderCustomerId: '',
-  };
-  for (const u of USERS) {
-    const user = await prisma.user.upsert({
-      where: { email: u.email },
-      update: { name: u.name, role: u.role },
-      create: { email: u.email, name: u.name, password: hash, role: u.role },
-    });
-    if (u.email === 'demo@stellar.dev') ids.demoCustomerId = user.id;
-    if (u.email === 'one@stellar.dev') ids.oneOrderCustomerId = user.id;
-    if (u.email === 'none@stellar.dev') ids.noneOrderCustomerId = user.id;
-    console.log(`✔ user ${u.email} (${u.role}) — password "${DEMO_PASSWORD}"`);
+async function embedQuery(text: string): Promise<number[]> {
+  if (!embeddingsClient) {
+    embeddingsClient = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
   }
-  return ids;
+  const model = embeddingsClient.getGenerativeModel({
+    model: process.env.EMBEDDINGS_MODEL ?? 'gemini-embedding-001',
+  });
+  const result = await model.embedContent({
+    content: { role: 'user', parts: [{ text }] },
+    taskType: 'RETRIEVAL_DOCUMENT',
+    outputDimensionality: EMBEDDING_DIMENSIONS,
+  } as unknown as Parameters<typeof model.embedContent>[0]);
+  return result.embedding.values;
 }
 
-async function seedOrders(ids: {
-  demoCustomerId: string;
-  oneOrderCustomerId: string;
-}): Promise<void> {
-  await prisma.order.deleteMany({});
-  await prisma.order.createMany({
-    data: ORDERS.map((o) => ({
-      ...o,
-      userId: ids.demoCustomerId,
-    })),
-  });
-  await prisma.order.create({
-    data: {
-      ...ONE_ORDER,
-      userId: ids.oneOrderCustomerId,
-    },
-  });
-  console.log(
-    `✔ seeded ${ORDERS.length} orders (demo customer) + 1 order (one-order customer)`,
-  );
-}
-
-async function seedFaq(): Promise<void> {
-  await prisma.faqEntry.deleteMany({});
-
-  let created = 0;
-  for (const entry of FAQ) {
-    const faq = await prisma.faqEntry.create({
-      data: {
-        question: entry.question,
-        answer: entry.answer,
-        category: entry.category,
-      },
-    });
-
-    // Embed one entry at a time — memory stays flat.
-    const vector = await embedQuery(
-      `${entry.category}\nQ: ${entry.question}\nA: ${entry.answer}`,
-    );
-    const vectorLiteral = `[${vector.join(',')}]`;
-
-    await prisma.$executeRawUnsafe(
-      `UPDATE faq_entries SET embedding = CAST($1 AS vector) WHERE id = $2`,
-      vectorLiteral,
-      faq.id,
-    );
-    created += 1;
-    console.log(`✔ faq ${created}/${FAQ.length}: "${entry.question.slice(0, 50)}…"`);
-  }
-  console.log(`✔ embedded ${created} FAQ entries (${FAQ.length} total)`);
+function uid(): string {
+  const crypto = require('crypto');
+  return crypto.randomUUID();
 }
 
 async function main(): Promise<void> {
-  console.log('🌱 Seeding AI Support Agent database…');
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI is required to run the seeder.');
+  }
   if (!process.env.GOOGLE_API_KEY) {
     throw new Error('GOOGLE_API_KEY is required to generate FAQ embeddings.');
   }
 
-  const ids = await seedUsers();
-  await seedOrders(ids);
-  await ensurePgVector();
-  await seedFaq();
+  console.log('🌱 Seeding AI Support Agent (MongoDB)…');
+  await mongoose.connect(process.env.MONGODB_URI);
 
+  // 1. Users
+  const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const demoIds: Record<string, string> = {};
+  for (const u of USERS) {
+    const doc = await UserModel.findOneAndUpdate(
+      { email: u.email.toLowerCase() },
+      { $setOnInsert: { id: uid() }, $set: { name: u.name, role: u.role, password: hash } },
+      { upsert: true, new: true },
+    ).exec();
+    demoIds[u.email] = doc.id;
+    console.log(`✔ user ${u.email} (${u.role}) — password "${DEMO_PASSWORD}"`);
+  }
+
+  // 2. Orders
+  await OrderModel.deleteMany({}).exec();
+  await OrderModel.create(
+    ORDERS.map((o) => ({
+      id: uid(),
+      ...o,
+      userId: demoIds['demo@stellar.dev'],
+    })),
+  );
+  await OrderModel.create({
+    id: uid(),
+    ...ONE_ORDER,
+    userId: demoIds['one@stellar.dev'],
+  });
+  console.log(
+    `✔ seeded ${ORDERS.length} orders (demo customer) + 1 order (one-order customer)`,
+  );
+
+  // 3. FAQ + embeddings (one at a time)
+  await FaqModel.deleteMany({}).exec();
+  let created = 0;
+  for (const entry of FAQ) {
+    const embedding = await embedQuery(
+      `${entry.category}\nQ: ${entry.question}\nA: ${entry.answer}`,
+    );
+    await FaqModel.create({
+      id: uid(),
+      question: entry.question,
+      answer: entry.answer,
+      category: entry.category,
+      embedding,
+    });
+    created += 1;
+    console.log(`✔ faq ${created}/${FAQ.length}: "${entry.question.slice(0, 50)}…"`);
+  }
+  console.log(`✔ embedded ${created} FAQ entries (${FAQ.length} total)`);
+
+  await mongoose.disconnect();
   console.log('✅ Seed complete.');
 }
 
@@ -322,4 +337,10 @@ main()
     console.error('❌ Seed failed:', err);
     process.exitCode = 1;
   })
-  .finally(() => prisma.$disconnect());
+  .finally(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const conn = (mongoose as any).connection;
+    if (conn && conn.readyState === 1) {
+      mongoose.disconnect().catch(() => undefined);
+    }
+  });

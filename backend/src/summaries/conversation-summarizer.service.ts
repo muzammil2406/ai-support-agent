@@ -20,8 +20,7 @@ Return ONLY valid JSON with this exact shape:
 
 /**
  * Summarizes a conversation with the same LLM provider/model family the live
- * agent uses (Groq or Gemini, controlled by LLM_PROVIDER / LLM_MODEL). Kept
- * self-contained inside the queue module so it can run as a standalone worker.
+ * agent uses (Groq or Gemini, controlled by LLM_PROVIDER / LLM_MODEL).
  */
 @Injectable()
 export class ConversationSummarizer {

@@ -6,25 +6,12 @@ import {
   ChatMessage,
   ChatSession,
 } from '../chat/schemas/chat-session.schema';
-import { PrismaService } from '../prisma/prisma.service';
-import { PostConversationService } from '../queue/post-conversation.service';
-import { RedisService } from '../redis/redis.service';
-
-export interface SessionState {
-  sessionId: string;
-  userId: string;
-  status: string;
-  escalatedToHuman: boolean;
-  ticketId?: string;
-  category?: string;
-  updatedAt: string;
-}
-
-const SESSION_TTL_SECONDS = 60 * 60 * 24; // 24h
+import { Ticket, TicketStatus, Priority } from '../mongo/schemas/ticket.schema';
+import { SummariesService } from '../summaries/summaries.service';
 
 /**
- * Owns chat-session lifecycle: Mongo transcript persistence, Redis presence
- * state, and the Postgres Ticket record created on human escalation.
+ * Owns chat-session lifecycle: Mongo transcript persistence + presence state,
+ * and the Mongo Ticket record created on human escalation. No Redis, no queue.
  */
 @Injectable()
 export class SessionsService {
@@ -32,9 +19,8 @@ export class SessionsService {
 
   constructor(
     @InjectModel(ChatSession.name) private readonly sessionModel: Model<ChatSession>,
-    private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
-    private readonly postConversation: PostConversationService,
+    @InjectModel(Ticket.name) private readonly ticketModel: Model<Ticket>,
+    private readonly summaries: SummariesService,
   ) {}
 
   async createSession(userId: string, category?: string): Promise<ChatSession> {
@@ -48,7 +34,6 @@ export class SessionsService {
       messages: [],
       startedAt: new Date(),
     });
-    await this.refreshState(session);
     this.logger.log(`Session created: ${sessionId} for user ${userId}`);
     return session;
   }
@@ -80,7 +65,6 @@ export class SessionsService {
     } as ChatMessage);
     session.markModified('messages');
     await session.save();
-    await this.refreshState(session);
     return session;
   }
 
@@ -92,16 +76,14 @@ export class SessionsService {
   }
 
   /**
-   * Hand off to a human: flip the Mongo session to `escalated`, create a
-   * Postgres Ticket (linked via sessionId), and refresh Redis state. Idempotent.
+   * Hand off to a human: flip the Mongo session to `escalated` and create a
+   * Mongo Ticket (linked via sessionId). Idempotent.
    */
   async escalate(sessionId: string, reason: string): Promise<{ id: string; sessionId: string }> {
     const session = await this.requireSession(sessionId);
 
     if (session.ticketId) {
-      const existing = await this.prisma.ticket.findUnique({
-        where: { id: session.ticketId },
-      });
+      const existing = await this.ticketModel.findOne({ id: session.ticketId }).exec();
       if (existing) {
         return { id: existing.id, sessionId: existing.sessionId };
       }
@@ -124,21 +106,19 @@ export class SessionsService {
       .reverse()
       .find((m) => m.role === 'user');
 
-    const ticket = await this.prisma.ticket.create({
-      data: {
-        userId: session.userId,
-        subject: `Escalation: ${session.category ?? 'general support'}`,
-        summary: lastUserMessage ? String(lastUserMessage.content).slice(0, 500) : null,
-        status: 'open',
-        priority: 'normal',
-        sessionId: session.sessionId,
-        escalatedAt: new Date(),
-      },
+    const subject = `Escalation: ${session.category ?? 'general support'}`;
+    const ticket = await this.ticketModel.create({
+      userId: session.userId,
+      subject,
+      summary: lastUserMessage ? String(lastUserMessage.content).slice(0, 500) : null,
+      status: 'open' as TicketStatus,
+      priority: 'normal' as Priority,
+      sessionId: session.sessionId,
+      escalatedAt: new Date(),
     });
 
     session.ticketId = ticket.id;
     await session.save();
-    await this.refreshState(session);
     this.logger.log(`Session ${sessionId} escalated → ticket ${ticket.id}`);
     return { id: ticket.id, sessionId: ticket.sessionId };
   }
@@ -148,8 +128,7 @@ export class SessionsService {
     session.status = 'resolved';
     session.resolvedAt = new Date();
     await session.save();
-    await this.refreshState(session);
-    await this.enqueuePostConversationProcessing(session, 'resolved');
+    await this.summarizeInBackground(session, 'resolved');
     return session;
   }
 
@@ -158,34 +137,33 @@ export class SessionsService {
     session.status = 'closed';
     session.closedAt = new Date();
     await session.save();
-    await this.refreshState(session);
-    await this.enqueuePostConversationProcessing(session, 'closed');
+    await this.summarizeInBackground(session, 'closed');
     return session;
   }
 
   /**
-   * After a conversation ends (resolved/closed) enqueue a BullMQ job that
-   * summarizes the transcript via LLM and writes the summary to MongoDB.
-   * Failures here are logged but must never break the core resolve/close flow.
+   * Summarize the ended conversation in the background (fire-and-forget, never
+   * blocking resolve/close). Replaces the old BullMQ worker — failures are
+   * caught and logged by SummariesService.
    */
-  private async enqueuePostConversationProcessing(
+  private async summarizeInBackground(
     session: ChatSession,
     terminalStatus: 'resolved' | 'closed',
   ): Promise<void> {
-    try {
-      await this.postConversation.enqueuePostConversationProcessing({
+    const messages = session.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    void this.summaries.summarizeAndStore(
+      {
         sessionId: session.sessionId,
         userId: session.userId,
         terminalStatus,
         ticketId: session.ticketId,
         escalationReason: session.escalationReason,
-        endedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      this.logger.error(
-        `Failed to enqueue post-conversation job for ${session.sessionId}: ${(err as Error).message}`,
-      );
-    }
+      },
+      messages,
+    );
   }
 
   /** Active + escalated sessions for the support dashboard. */
@@ -203,27 +181,5 @@ export class SessionsService {
       .sort({ updatedAt: -1 })
       .limit(50)
       .exec();
-  }
-
-  // ── Redis presence state ────────────────────────────────────────────────
-  private async refreshState(session: ChatSession): Promise<void> {
-    const state: SessionState = {
-      sessionId: session.sessionId,
-      userId: session.userId,
-      status: session.status,
-      escalatedToHuman: session.escalatedToHuman,
-      ticketId: session.ticketId,
-      category: session.category,
-      updatedAt: new Date().toISOString(),
-    };
-    await this.redis.setJson(`chat:${session.sessionId}`, state, SESSION_TTL_SECONDS);
-  }
-
-  async getState(sessionId: string): Promise<SessionState | null> {
-    return this.redis.getJson<SessionState>(`chat:${sessionId}`);
-  }
-
-  async touch(sessionId: string): Promise<void> {
-    await this.redis.expire(`chat:${sessionId}`, SESSION_TTL_SECONDS);
   }
 }

@@ -6,8 +6,8 @@ import { SessionsService } from '../../sessions/sessions.service';
  * LangChain tool: human-escalation handoff.
  *
  * Binds to the current chat session so the handoff knows exactly which
- * transcript to escalate. Creates the Postgres Ticket and flips the Mongo
- * session to `escalated` (both driven by SessionsService).
+ * transcript to escalate. Creates the Mongo Ticket and flips the session to
+ * `escalated` (both driven by SessionsService).
  */
 export function createEscalateToHumanTool(
   sessions: SessionsService,

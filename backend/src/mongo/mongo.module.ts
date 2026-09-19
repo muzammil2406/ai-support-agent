@@ -3,8 +3,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 /**
- * Secondary database connection (MongoDB Atlas) for chat transcripts/sessions.
- * Kept separate from Prisma on purpose.
+ * Primary database connection (MongoDB Atlas) — users, orders, FAQ,
+ * chat sessions, tickets and summaries all live here.
  */
 @Global()
 @Module({

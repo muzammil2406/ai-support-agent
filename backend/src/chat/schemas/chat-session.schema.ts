@@ -1,9 +1,7 @@
-// Mongoose chat-session schema — secondary DB (MongoDB Atlas).
-// Stores chat transcripts + session lifecycle only. User/ticket/order data
-// stays in Postgres; the session links back via `userId` / `ticketId`.
-//
-// The Mongo connection (ChatSessionModule) is separate from the Prisma
-// connection. See src/chat/chat.module.ts.
+// Mongoose chat-session schema — primary DB (MongoDB Atlas).
+// Stores chat transcripts + session lifecycle. User/order/ticket data live in
+// Mongo too (see src/mongo/schemas); the session links back via `userId` /
+// `ticketId`.
 
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
@@ -51,11 +49,11 @@ export class ChatSession extends Document {
   @Prop({ type: String, required: true, unique: true, index: true })
   sessionId!: string;
 
-  /** Postgres `users.id` */
+  /** mongo users.id */
   @Prop({ type: String, required: true, index: true })
   userId!: string;
 
-  /** Postgres `tickets.id`, set when escalated */
+  /** mongo tickets.id, set when escalated */
   @Prop({ type: String })
   ticketId?: string;
 

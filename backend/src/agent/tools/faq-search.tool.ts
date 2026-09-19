@@ -1,7 +1,8 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
+import { Model } from 'mongoose';
 import { EmbeddingsService } from '../../embeddings/embeddings.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import { FaqEntry } from '../../mongo/schemas/faq-entry.schema';
 
 interface FaqMatch {
   id: string;
@@ -11,15 +12,29 @@ interface FaqMatch {
   similarity: number;
 }
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 /**
  * LangChain tool: semantic FAQ lookup.
  *
- * Memory constraint respected: only ONE embedding is produced per call (the
- * user's query) and we hit pgvector directly with a top-5 ANN query. The FAQ
- * set is never loaded into application memory.
+ * Pure MongoDB: entries store their 768-dim embedding as a plain array, and
+ * the (small) FAQ set is scored with brute-force cosine similarity in memory.
+ * Returns the top-5 best-matching Q&A entries.
  */
 export function createFaqSearchTool(
-  prisma: PrismaService,
+  faqModel: Model<FaqEntry>,
   embeddings: EmbeddingsService,
 ): DynamicStructuredTool {
   return new DynamicStructuredTool({
@@ -37,24 +52,32 @@ export function createFaqSearchTool(
     }),
     func: async ({ query, category }) => {
       const vector = await embeddings.embedQuery(query);
-      const vectorLiteral = embeddings.toVectorString(vector);
 
-      const rows = await prisma.$queryRaw<FaqMatch[]>`
-        SELECT id, question, answer, category,
-               1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
-        FROM faq_entries
-        WHERE embedding IS NOT NULL
-          AND (${category ?? null}::text IS NULL OR category = ${category ?? null})
-        ORDER BY embedding <=> ${vectorLiteral}::vector
-        LIMIT 5
-      `;
+      const filter = category
+        ? { category, embedding: { $exists: true, $ne: null } }
+        : { embedding: { $exists: true, $ne: null } };
+      const entries = await faqModel.find(filter).lean().exec();
 
-      const matches = rows.map((r) => ({
-        id: r.id,
-        question: r.question,
-        answer: r.answer,
-        category: r.category,
-        similarity: Number(r.similarity).toFixed(3),
+      const scored = entries
+        .map((entry) => {
+          const embedding = entry.embedding as number[] | undefined;
+          return {
+            entry,
+            similarity: embedding
+              ? cosineSimilarity(vector, embedding)
+              : Number.NEGATIVE_INFINITY,
+          };
+        })
+        .filter((s) => Number.isFinite(s.similarity));
+
+      scored.sort((a, b) => b.similarity - a.similarity);
+
+      const matches: FaqMatch[] = scored.slice(0, 5).map((s) => ({
+        id: s.entry.id,
+        question: s.entry.question,
+        answer: s.entry.answer,
+        category: s.entry.category,
+        similarity: Number(s.similarity).toFixed(3),
       }));
 
       return JSON.stringify(
