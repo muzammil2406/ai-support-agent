@@ -16,13 +16,7 @@ services:
         value: 10000
       - key: CORS_ORIGIN
         value: http://localhost:3000
-      - key: DATABASE_URL
-        sync: false
       - key: MONGODB_URI
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
       - key: LLM_PROVIDER
         value: groq
@@ -35,10 +29,4 @@ services:
       - key: EMBEDDINGS_MODEL
         value: gemini-embedding-001
       - key: JWT_SECRET
-        sync: false
-      # ── BullMQ background jobs (Part 1) ────────────────────────────
-      # Socket Redis URL (Upstash rediss:// or local redis://). Required for the
-      # post-conversation worker. Rest client (UPSTASH_REDIS_REST_*) cannot drive
-      # BullMQ, so this is a separate connection.
-      - key: BULLMQ_REDIS_URL
         sync: false
